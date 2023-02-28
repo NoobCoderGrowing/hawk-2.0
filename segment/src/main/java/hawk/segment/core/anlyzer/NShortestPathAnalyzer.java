@@ -4,6 +4,7 @@ import hawk.segment.core.*;
 import hawk.segment.core.graph.Edge;
 import hawk.segment.core.graph.Vertex;
 import hawk.segment.core.Term;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -15,10 +16,14 @@ import java.net.URL;
 import java.util.*;
 
 @Slf4j
+@Data
 public class NShortestPathAnalyzer implements Analyzer {
 
     @Autowired
     private StringTools stringTools;
+
+    //number of shortest paths
+    private int n=3;
 
     private final static int PHRASE_MAX_LEN = 20;
 
@@ -77,7 +82,7 @@ public class NShortestPathAnalyzer implements Analyzer {
         ArrayList<Phrase> hanziList = hanPinDigSeg.getHanZiList();
         //汉字分词形成token
         for (int i = 0; i < hanziList.size(); i++) {
-            nShortestPath(hanziList.get(i), 3, fieldID, termSet, fieldName);
+            nShortestPath(hanziList.get(i), fieldID, termSet, fieldName);
         }
         //数字形成token，粗分
         ArrayList<Phrase> digitList = hanPinDigSeg.getDigitList();
@@ -102,7 +107,7 @@ public class NShortestPathAnalyzer implements Analyzer {
     }
 
     // n 最短路径分词
-    public void nShortestPath(Phrase phrase, int n, int fieldID, HashSet<Term> termSet, String fieldName){
+    public void nShortestPath(Phrase phrase, int fieldID, HashSet<Term> termSet, String fieldName){
         String chineseStr = phrase.getValue();
         if(StringUtils.isNullOrEmpty(chineseStr)){
             return;
@@ -121,52 +126,13 @@ public class NShortestPathAnalyzer implements Analyzer {
         if(chineseStr.length() > PHRASE_MAX_LEN){
             chineseStr = chineseStr.substring(0, PHRASE_MAX_LEN);
         }
-        List<Vertex> graph = createGraph(chineseStr, n);
-        computeNShortestPath(graph, n);
+        List<Vertex> graph = createGraph(chineseStr);
+        computeNShortestPath(graph);
         retriveNShortestPath(graph, phrase.getPos(), fieldID, termSet, fieldName);
     }
 
+
     public List<Vertex> createGraph(String chineseStr){
-        ArrayList<Vertex> graph = new ArrayList<Vertex>(chineseStr.length()+1);
-        // create string.length + 1 vertex
-        for (int i = 0; i < chineseStr.length()+1 ; i++) {
-            Vertex vertex = new Vertex(i);
-            graph.add(vertex);
-        }
-        // create string.length edge between every vertex
-        for (int i = 0; i < chineseStr.length(); i++) {
-            Edge edge = new Edge();
-            edge.setWord(String.valueOf(chineseStr.charAt(i)));
-            edge.setCost(1);
-            Vertex from = graph.get(i);
-            Vertex to = graph.get(i+1);
-            edge.setStart(from);
-            edge.setDestination(to);
-            from.getOutEdges().putIfAbsent(i+1, edge);
-            to.getInEdges().putIfAbsent(i, edge);
-        }
-
-        //如果字典中包该词组，创建对应edge
-        for (int i = 0; i < chineseStr.length(); i++) {
-            for (int j = chineseStr.length(); j >= i + 2 ; j--) {
-                String str = chineseStr.substring(i, j);
-                if(NPathSet.contains(str)){
-                    Edge edge = new Edge();
-                    edge.setWord(str);
-                    edge.setCost(1);
-                    Vertex from = graph.get(i);
-                    Vertex to = graph.get(j);
-                    edge.setStart(from);
-                    edge.setDestination(to);
-                    from.getOutEdges().putIfAbsent(j, edge);
-                    to.getInEdges().putIfAbsent(i, edge);
-                }
-            }
-        }
-        return graph;
-    }
-
-    public List<Vertex> createGraph(String chineseStr, int n){
         ArrayList<Vertex> graph = new ArrayList<Vertex>(chineseStr.length()+1);
         // create string.length + 1 vertex
         for (int i = 0; i < chineseStr.length()+1 ; i++) {
@@ -209,7 +175,7 @@ public class NShortestPathAnalyzer implements Analyzer {
     //不重复版本，例如说，3-最短路径，那么最终路径数不会超过3条，同样长度的路径会占用名额
     //n:共多少个字； N: N-最短路径； k：每个字的入度
     //时间复杂度：n*N*k
-    public void computeNShortestPath(List<Vertex> graph, int n){
+    public void computeNShortestPath(List<Vertex> graph){
         for (int i = 1; i < graph.size(); i++) {
             Vertex current = graph.get(i);
             PriorityQueue<Map.Entry<Double,Vertex>> nPathsTable = current.getNPathsTable();
@@ -279,10 +245,10 @@ public class NShortestPathAnalyzer implements Analyzer {
     }
 
     public static void main(String[] args) {
-        NShortestPathAnalyzer completeAnalyzer = new NShortestPathAnalyzer();
-        completeAnalyzer.init();
-        completeAnalyzer.stringTools = new StringTools();
-        System.out.println(completeAnalyzer.anlyze("他说的很有道理",0,"title"));
+        NShortestPathAnalyzer nShortestPathAnalyzer = new NShortestPathAnalyzer();
+        nShortestPathAnalyzer.init();
+        nShortestPathAnalyzer.stringTools = new StringTools();
+        System.out.println(nShortestPathAnalyzer.anlyze("他说的很有道理",0,"title"));
     }
 
 }
