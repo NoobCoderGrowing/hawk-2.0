@@ -1,6 +1,6 @@
 package hawk.index.mapper;
 
-import hawk.common.entity.Goods;
+import hawk.segment.entity.Goods;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 

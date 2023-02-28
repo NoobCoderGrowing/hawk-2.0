@@ -1,9 +1,9 @@
 package hawk.index.service;
 
-import hawk.common.entity.Goods;
+import hawk.segment.entity.Goods;
 
-import java.util.ArrayList;
+import java.util.List;
 
 public interface GoodsService {
-    ArrayList<Goods> queryAllGoods();
+    List<Goods> queryAllGoods();
 }
