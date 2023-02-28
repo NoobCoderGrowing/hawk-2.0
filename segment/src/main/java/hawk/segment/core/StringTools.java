@@ -35,7 +35,7 @@ public class StringTools {
         } catch (FileNotFoundException e) {
             log.error("puntuation file not found");
             System.exit(-1);
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("met error while reading puntuation file");
             System.exit(-1);
         }

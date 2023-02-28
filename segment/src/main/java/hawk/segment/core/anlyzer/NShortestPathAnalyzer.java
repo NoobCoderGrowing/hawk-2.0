@@ -1,5 +1,4 @@
 package hawk.segment.core.anlyzer;
-
 import com.mysql.cj.util.StringUtils;
 import hawk.segment.core.*;
 import hawk.segment.core.graph.Edge;
@@ -8,6 +7,7 @@ import hawk.segment.core.Term;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import javax.annotation.PostConstruct;
 import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
@@ -29,7 +29,7 @@ public class NShortestPathAnalyzer implements Analyzer {
         return null;
     }
 
-    @Override
+    @PostConstruct
     public void init() {
         loadNPathDic();
     }
@@ -281,7 +281,8 @@ public class NShortestPathAnalyzer implements Analyzer {
     public static void main(String[] args) {
         NShortestPathAnalyzer completeAnalyzer = new NShortestPathAnalyzer();
         completeAnalyzer.init();
-        completeAnalyzer.anlyze("他说的很有道理",0,"title");
+        completeAnalyzer.stringTools = new StringTools();
+        System.out.println(completeAnalyzer.anlyze("他说的很有道理",0,"title"));
     }
 
 }
