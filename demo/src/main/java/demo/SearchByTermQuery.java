@@ -27,7 +27,6 @@ public class SearchByTermQuery {
             Document doc = searcher.doc(hits[i]);
             System.out.println(JSON.toJSONString(doc));
         }
-
         searcher.close();
     }
 }

@@ -240,11 +240,25 @@ public class Searcher {
         byte fieldType = fdmMap.get(fieldName).getLeft()[0];
         if((fieldType & 0b00001000) != 0){ // String field
             String value = new String(fieldValue,StandardCharsets.UTF_8);
-            return new StringField(fieldName, value);
+            if((fieldType & 0b00000001) != 0 && (fieldType & 0b00000010) != 0){
+                return new StringField(fieldName, value, Field.Tokenized.YES, Field.Stored.YES);
+            }else if((fieldType & 0b00000001) == 0 && (fieldType & 0b00000010) != 0){
+                return new StringField(fieldName, value, Field.Tokenized.YES, Field.Stored.NO);
+            }else if((fieldType & 0b00000001) != 0 && (fieldType & 0b00000010) == 0){
+                return new StringField(fieldName, value, Field.Tokenized.NO, Field.Stored.YES);
+            }
+            return new StringField(fieldName, value, Field.Tokenized.NO, Field.Stored.NO);
         } else if ((fieldType & 0b00000100)!= 0) { // double field
             long longVal = DataInput.readLong(fieldValue);
             double value = Double.longBitsToDouble(longVal);
-            return new DoubleField(fieldName, value);
+            if((fieldType & 0b00000001) != 0 && (fieldType & 0b00000010) != 0){
+                return new DoubleField(fieldName, value, Field.Tokenized.YES, Field.Stored.YES);
+            }else if((fieldType & 0b00000001) == 0 && (fieldType & 0b00000010) != 0){
+                return new DoubleField(fieldName, value, Field.Tokenized.YES, Field.Stored.NO);
+            }else if((fieldType & 0b00000001) != 0 && (fieldType & 0b00000010) == 0){
+                return new DoubleField(fieldName, value, Field.Tokenized.NO, Field.Stored.YES);
+            }
+            return new DoubleField(fieldName, value, Field.Tokenized.NO, Field.Stored.NO);
         }
         return null;
     }
