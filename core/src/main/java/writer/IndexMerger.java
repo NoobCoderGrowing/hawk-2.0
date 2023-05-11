@@ -322,7 +322,7 @@ public class IndexMerger {
                 int length = right - left;
                 byte[] block = new byte[length];
                 //read original bloc
-                seg2FDTBuffer.get(block, left, length);
+                seg2FDTBuffer.get(block);
                 ByteBuffer buffer = ByteBuffer.wrap(block);
                 //write original block to seg1 FDT
                 writePos += left;
