@@ -79,7 +79,7 @@ public class DocWriter implements Runnable {
         assembleFDM(docFDM);
         assembleIVT(docIVT, docID);
         bytesUsed.addAndGet(bytesCurDoc.getValue() + 8); //8bytes for 2 docID in FDM and IVT
-        log.info("current bytes used： " + bytesUsed.get());
+//        log.info("current bytes used： " + bytesUsed.get());
         ramUsageLock.unlock();
     }
 
@@ -371,12 +371,12 @@ public class DocWriter implements Runnable {
         Path timPath = files[2];
         Path frqPath = files[3];
         Path fdmPath = files[4];
-        // sort fdt
-        Collections.sort(fdt, (o1, o2) -> {
-            Integer a = (Integer) o1.getLeft();
-            Integer b = (Integer) o2.getLeft();
-            return  a - b;
-        });
+        // there is no need to sort fdt
+//        Collections.sort(fdt, (o1, o2) -> {
+//            Integer a = (Integer) o1.getLeft();
+//            Integer b = (Integer) o2.getLeft();
+//            return  a - b;
+//        });
         // sort fdm (by field lexicographically)
         ArrayList<Map.Entry<ByteReference, Pair<byte[], int[]>>> fdmList = new ArrayList<>(fdm.entrySet());
         sortFDM(fdmList);

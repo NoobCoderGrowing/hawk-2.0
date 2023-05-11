@@ -5,4 +5,5 @@
 /z-nacos/logs
 /z-nacos2/logs
 /demo/src/main/resources/goods.csv
+/shard-control/src/main/resources/goods.csv
 **/*.iml

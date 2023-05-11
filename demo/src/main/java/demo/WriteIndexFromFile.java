@@ -7,6 +7,7 @@ import field.Field;
 import field.StringField;
 import hawk.segment.core.anlyzer.Analyzer;
 import hawk.segment.core.anlyzer.NShortestPathAnalyzer;
+import lombok.extern.slf4j.Slf4j;
 import writer.IndexConfig;
 import writer.IndexWriter;
 
@@ -17,10 +18,12 @@ import java.net.URL;
 import java.nio.file.Paths;
 
 
+@Slf4j
 public class WriteIndexFromFile {
 
     public static void main(String[] args) throws IOException {
-        MMapDirectory mMapDirectory = new MMapDirectory(Paths.get("/opt/index/shard3"));
+        long start = System.currentTimeMillis();
+        MMapDirectory mMapDirectory = new MMapDirectory(Paths.get("/opt/index/shard4"));
         Analyzer analyzer = new NShortestPathAnalyzer(1);
         IndexConfig indexConfig = new IndexConfig(analyzer);
         IndexWriter indexWriter = new IndexWriter(indexConfig, mMapDirectory);
@@ -42,5 +45,7 @@ public class WriteIndexFromFile {
         }
         bufferedReader.close();
         indexWriter.commit();
+        long end = System.currentTimeMillis();
+        log.info("total takes " + (end-start) + " milliseconds");
     }
 }

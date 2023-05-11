@@ -4,10 +4,7 @@ import document.Document;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -43,11 +40,12 @@ public class IndexWriter {
 
     //documentID, increase linearly from 0 since every time an indexWriter is opened
     private AtomicInteger docIDAllocator;
-    private ConcurrentLinkedQueue<Future> futures;
+//    private ConcurrentLinkedQueue<Future> futures;
+
+    private LinkedList<Future> futures;
 
     private HashMap<ByteReference, Pair<byte[], int[]>> fdm;
 
-    private LinkedBlockingQueue<Runnable> blockingQueue;
 
     public IndexWriter(IndexConfig config, Directory directory) {
         this.config = config;
@@ -57,26 +55,27 @@ public class IndexWriter {
         this.bytesUsed = new AtomicLong(0);
         this.ramUsageLock = new ReentrantLock();
         this.docIDAllocator = new AtomicInteger(0);
-        this.blockingQueue = new LinkedBlockingQueue<>();
         this.threadPoolExecutor =  new ThreadPoolExecutor( config.getIndexerThreadNum(),
                 config.getIndexerThreadNum(), 0, TimeUnit.MILLISECONDS,
-                this.blockingQueue);
-        this.futures = new ConcurrentLinkedQueue<>();
+                new LinkedBlockingQueue<>());
+        this.futures = new LinkedList<>();
         this.fdm = new HashMap<>();
     }
 
 // indexing is by default multithreaded.
-    public void addDoc(Document doc){
+    public synchronized void addDoc(Document doc){
         Future<?> future = threadPoolExecutor.submit(new DocWriter(docIDAllocator, doc, fdt, ivt, bytesUsed,
                 config.getMaxRamUsage(), ramUsageLock, directory, config, fdm));
         futures.add(future);
     }
 
     // must call after all addDoc
-    public void commit(){
-        for (int i = 0; i < futures.size(); i++) {
+    public synchronized void commit(){
+        int i = 1;
+        while (!futures.isEmpty()) {
             try {
                 futures.poll().get();
+                log.info("commit ===>>> future linked list polled " + (i++) + " task");
             } catch (InterruptedException e) {
                 log.info("met InterruptedException during commit ");
             } catch (ExecutionException e) {
@@ -84,6 +83,7 @@ public class IndexWriter {
             }
         }
         threadPoolExecutor.shutdown();
+        log.info("commit thread pool shutdown");
         if(ivt.size() != 0 || fdt.size() != 0) {
             DocWriter lastDocWriter = new DocWriter(docIDAllocator, null, fdt, ivt, bytesUsed, config.getMaxRamUsage(),
                     ramUsageLock, directory, config, fdm);

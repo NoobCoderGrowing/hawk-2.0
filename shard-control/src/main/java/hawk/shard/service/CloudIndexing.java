@@ -51,8 +51,8 @@ public class CloudIndexing {
         batchBlocking(refreshWriterResult, "refresh index writer");
     }
 
+    //add doc in blocking mode
     public void cloudAddDocFromFileData(ConcurrentHashMap<String, List<ServiceInstance>> indexerMap){
-        List<CompletableFuture<String>> memIndexingResult = new ArrayList<>();
         List<List<Document>> documentSharding = createDocSharding();
         InputStream inputStream = getClass().getClassLoader().getResourceAsStream("goods-short.csv");
         BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
@@ -74,18 +74,17 @@ public class CloudIndexing {
                 documentSharding.get(shardNum).add(document);
                 count++;
                 if(count >= shardCount * shardLimit){
-                    sendIndexingRequest(documentSharding, indexerMap, memIndexingResult);
+                    sendAddDocRequest(documentSharding, indexerMap);
                     documentSharding = createDocSharding();
                     count = 0;
                 }
             }
             //last cloud indexing
-            if(documentSharding.get(0).size() >0 ) sendIndexingRequest(documentSharding, indexerMap, memIndexingResult);
+            if(documentSharding.get(0).size() >0 ) sendAddDocRequest(documentSharding, indexerMap);
         }catch (IOException e){
             log.error("fail to read goods in cloudIndexing");
             System.exit(1);
         }
-        batchBlocking(memIndexingResult, "indexing task");
     }
 
     public void cloudCommit(ConcurrentHashMap<String, List<ServiceInstance>> indexerMap){
@@ -158,7 +157,7 @@ public class CloudIndexing {
                 switchEngineResult.add(ret);
             }
         }
-        batchBlocking(switchEngineResult, "switcher searcher task");
+        batchBlocking(switchEngineResult, "switch searcher task");
     }
 
     public void batchBlocking(List<CompletableFuture<String>> result, String taskName){
@@ -214,8 +213,8 @@ public class CloudIndexing {
         }
     }
 
-    public void sendIndexingRequest(List<List<Document>> documentShardings, Map<String, List<ServiceInstance>>
-            indexerMap, List<CompletableFuture<String>> result){
+    public void sendAddDocRequest(List<List<Document>> documentShardings, Map<String, List<ServiceInstance>>
+            indexerMap){
         for (int i = 0; i < documentShardings.size(); i++) {
             List<Document> docShard = documentShardings.get(i);
             String shardName = Integer.toString(i+1);
@@ -225,10 +224,8 @@ public class CloudIndexing {
                 int port = shardInstances.get(j).getPort();
                 String url = "http://".concat(host).concat(":").concat(Integer.toString(port)).
                         concat("/cloud-control/index-documents");
-                CompletableFuture<String> ret = webClient.post().uri(url).contentType(MediaType.APPLICATION_JSON).
-                        bodyValue(docShard).retrieve().bodyToMono(String.class).timeout(Duration.ofSeconds(3)).
-                        subscribeOn(Schedulers.single()).toFuture();
-                result.add(ret);
+                webClient.post().uri(url).contentType(MediaType.APPLICATION_JSON).
+                        bodyValue(docShard).retrieve().bodyToMono(String.class).timeout(Duration.ofSeconds(3)).block();
             }
         }
     }
