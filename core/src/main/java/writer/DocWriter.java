@@ -63,10 +63,10 @@ public class DocWriter implements Runnable {
     public void run() {
         WrapLong bytesCurDoc = new WrapLong(0);
         // parallel tokenization here
-        byte[][]  docFDT = processStoredFields(doc, bytesCurDoc);
-        Pair docFDMIVT =  processIndexedFields(doc, bytesCurDoc);
-        HashMap<ByteReference, Pair<byte[], Integer>> docFDM = (HashMap<ByteReference, Pair<byte[], Integer>>) docFDMIVT.getLeft();
-        HashMap<FieldTermPair, int[]> docIVT = (HashMap<FieldTermPair, int[]>) docFDMIVT.getRight();
+        Pair<HashMap<ByteReference, Pair<byte[], Integer>>, byte[][]>  storedRet = processStoredFields(doc, bytesCurDoc);
+        HashMap<ByteReference, Pair<byte[], Integer>> docFDM = storedRet.getLeft();
+        byte[][] docFDT = storedRet.getRight();
+        HashMap<FieldTermPair, int[]> docIVT=  processIndexedFields(doc, bytesCurDoc);
         // flush when ram usage exceeds configuration
         ramUsageLock.lock();
         while(bytesUsed.get() + bytesCurDoc.getValue() >= maxRamUsage * 0.95){
@@ -371,15 +371,15 @@ public class DocWriter implements Runnable {
         Path timPath = files[2];
         Path frqPath = files[3];
         Path fdmPath = files[4];
+        // sort fdm (by field lexicographically)
+        ArrayList<Map.Entry<ByteReference, Pair<byte[], int[]>>> fdmList = new ArrayList<>(fdm.entrySet());
+        sortFDM(fdmList);
         // there is no need to sort fdt
 //        Collections.sort(fdt, (o1, o2) -> {
 //            Integer a = (Integer) o1.getLeft();
 //            Integer b = (Integer) o2.getLeft();
 //            return  a - b;
 //        });
-        // sort fdm (by field lexicographically)
-        ArrayList<Map.Entry<ByteReference, Pair<byte[], int[]>>> fdmList = new ArrayList<>(fdm.entrySet());
-        sortFDM(fdmList);
         // sort ivt ( sort field first and then term lexicographically)
         ArrayList<Map.Entry<FieldTermPair, int[][]>> ivtList = new ArrayList<>(ivt.entrySet());
         sortIVTList(ivtList);
@@ -390,7 +390,8 @@ public class DocWriter implements Runnable {
         mergetest(docBase);
     }
 
-    public byte[][] processStoredFields(Document doc, WrapLong bytesCurDoc) {
+    public Pair<HashMap<ByteReference, Pair<byte[], Integer>>, byte[][]> processStoredFields(Document doc, WrapLong bytesCurDoc) {
+        HashMap<ByteReference, Pair<byte[], Integer>> docFDM = new HashMap<>();
         byte[][] bytePool = new byte[10][];
         HashMap<String, Field> fieldMap = doc.getFieldMap();
         int i = 0;
@@ -405,21 +406,32 @@ public class DocWriter implements Runnable {
                 bytesCurDoc.setValue(bytesCurDoc.getValue() + fieldBytes.length);
             }
             i++;
+            // doc fdm
+            byte[] fieldName = field.serializeName();
+            byte fieldType = getFieldType(field);
+            int filedLength = 0;
+            if(field instanceof StringField){
+                filedLength = ((StringField) field).getValue().length();
+            }else if(field instanceof  DoubleField){
+                filedLength = 1;
+            }
+
+            assembleFieldTypeMap(docFDM, fieldName, new byte[]{fieldType},filedLength, bytesCurDoc);
         }
-        return bytePool;
+        Pair<HashMap<ByteReference, Pair<byte[], Integer>>, byte[][]> ret = new Pair<>(docFDM, bytePool);
+        return ret;
     }
 
-    public Pair processIndexedFields(Document doc, WrapLong bytesCurDoc){
-        Pair<HashMap<ByteReference, Pair<byte[], Integer>>, HashMap<FieldTermPair, int[]>> ret = new Pair<>(new HashMap<>(),
-                new HashMap<>());
+    public HashMap<FieldTermPair, int[]> processIndexedFields(Document doc, WrapLong bytesCurDoc){
+        HashMap<FieldTermPair, int[]> fieldTermMap = new HashMap<>();
         HashMap<String, Field> fieldMap = doc.getFieldMap();
         for (Map.Entry<String, Field> entry : fieldMap.entrySet()) {
             Field field = entry.getValue();
             if(field.isTokenized() == Field.Tokenized.YES){
-                processIndexedField(field, ret, bytesCurDoc);
+                processIndexedField(field, fieldTermMap, bytesCurDoc);
             }
         }
-        return ret;
+        return fieldTermMap;
     }
 
     public byte getFieldType(Field field){
@@ -458,13 +470,8 @@ public class DocWriter implements Runnable {
         }
     }
 
-    public void processIndexedField(Field field, Pair pair,
+    public void processIndexedField(Field field, HashMap<FieldTermPair, int[]> fieldTermMap,
                                     WrapLong bytesCurDoc){
-        //key: filed name; value1:field type, value2: field value length
-        HashMap<ByteReference, Pair<byte[], Integer>> fieldTypeMap = (HashMap) pair.getLeft();
-        //key: field term pair; value: doc frequency, field value length
-        HashMap<FieldTermPair, int[]> fieldTermMap = (HashMap) pair.getRight();
-        byte termType = getFieldType(field);
         byte[] filedName = field.serializeName();
         int filedLength = 0;
         if (field instanceof StringField){
@@ -486,7 +493,6 @@ public class DocWriter implements Runnable {
                 assembleFieldTermMap(fieldTermMap, filedName,prefixString[i].getBytes(StandardCharsets.UTF_8), bytesCurDoc, filedLength);
             }
         }
-        assembleFieldTypeMap(fieldTypeMap, filedName, new byte[]{termType},filedLength, bytesCurDoc);
     }
 
 }

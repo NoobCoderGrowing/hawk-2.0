@@ -289,15 +289,16 @@ public class IndexMerger {
 
     public void mergeFDX(ArrayList<int[]> seg2FDX, FileChannel seg1FdxFC, FileChannel seg1FdtFC){
         try {
-            long limit = seg1FdtFC.size();
+            long seg1FdxLimit = seg1FdxFC.size();
+            WrapLong fdxOffset = new WrapLong(seg1FdxLimit);
+            long seg1Fdtlimit = seg1FdtFC.size();
             for (int i = 0; i < seg2FDX.size(); i++) {
                 int[] item = seg2FDX.get(i);
                 int docID = item[0];
-                long offset = item[1] + limit;
-                WrapLong offsetWrapper = new WrapLong(offset);
-                log.info("fdx merge writing ===> " + "docID is " + docID + ", fdt offset is " + offset);
-                DataOutput.writeVInt(docID, seg1FdxFC, offsetWrapper);
-                DataOutput.writeVLong(offset, seg1FdxFC, offsetWrapper);
+                long fdtOffset = item[1] + seg1Fdtlimit;
+                log.info("fdx merge writing ===> " + "docID is " + docID + ", fdt offset is " + fdtOffset);
+                DataOutput.writeVInt(docID, seg1FdxFC, fdxOffset);
+                DataOutput.writeVLong(fdtOffset, seg1FdxFC, fdxOffset);
             }
         } catch (IOException e) {
             log.error("something wrong during mergeFDX");
@@ -325,8 +326,8 @@ public class IndexMerger {
                 seg2FDTBuffer.get(block);
                 ByteBuffer buffer = ByteBuffer.wrap(block);
                 //write original block to seg1 FDT
-                writePos += left;
                 seg1FdtFC.write(buffer, writePos);
+                writePos += length;
             }
         } catch (IOException e) {
             log.error("something wrong during mergeFDT");
