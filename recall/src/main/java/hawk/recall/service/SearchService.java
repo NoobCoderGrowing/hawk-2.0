@@ -72,11 +72,12 @@ public class SearchService {
         }
     }
 
-    public List<Document> search(String query){
+    public List<Document> search(String query, String mode){
         List<Document> result = new ArrayList<>();
         Query strQuery = new StringQuery("title", query);
+        if(searchEngine == null) return new ArrayList<>();
         readWriteLock.readLock().lock(); // allow concurrent read, but disallow reading while switching engine
-        ScoreDoc[] hits = this.searchEngine.search(strQuery, 1000);
+        ScoreDoc[] hits = this.searchEngine.search(strQuery, 1000, mode);
         for (int i = 0; i < hits.length; i++) {
             Document doc = this.searchEngine.doc(hits[i]);
             result.add(doc);
@@ -89,7 +90,7 @@ public class SearchService {
         List<Document> result = new ArrayList<>();
         Query rangeQuery = new NumericRangeQuery("price", left, right);
         readWriteLock.readLock().lock(); // allow concurrent read, but disallow reading while switching engine
-        ScoreDoc[] hits = this.searchEngine.search(rangeQuery, 1000);
+        ScoreDoc[] hits = this.searchEngine.search(rangeQuery, 1000, "empty");
         for (int i = 0; i < hits.length; i++) {
             Document doc = this.searchEngine.doc(hits[i]);
             result.add(doc);

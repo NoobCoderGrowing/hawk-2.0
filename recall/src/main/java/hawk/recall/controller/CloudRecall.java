@@ -16,10 +16,10 @@ public class CloudRecall {
     @Resource
     SearchService searchService;
 
-    @RequestMapping(value = "/recall/{query}", method = RequestMethod.GET)
+    @RequestMapping(value = "/recall/{mode}/{query}", method = RequestMethod.GET)
     @ResponseBody
-    public List<Document> search(@PathVariable String query){
-        return searchService.search(query);
+    public List<Document> search(@PathVariable String query, @PathVariable String mode){
+        return searchService.search(query, mode);
     }
 
     @RequestMapping(value = "/recall/range/{left}/{right}", method = RequestMethod.GET)

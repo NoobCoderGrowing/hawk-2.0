@@ -37,22 +37,34 @@ public class Searcher {
         this.indexConfig = indexConfig;
     }
 
-    public ScoreDoc[] searchString(StringQuery query){
+    public ScoreDoc[] searchStringAnd(StringQuery query){
         Analyzer analyzer = indexConfig.getAnalyzer();
         HashSet<Term> terms = analyzer.anlyze(query.getValue(), query.getField());
         ScoreDoc[][] scoreDocs = new ScoreDoc[terms.size()][];
         int i = 0;
         BooleanQuery andQuery = new BooleanQuery(BooleanQuery.Operation.MUST);
-        BooleanQuery orQuery = new BooleanQuery(BooleanQuery.Operation.SHOULD);
         for (Term term: terms) {
             String field = term.getFieldName();
             String termStr = term.getValue();
             TermQuery termQuery = new TermQuery(field, termStr);
             andQuery.addQuery(termQuery);
-            orQuery.addQuery(termQuery);
         }
         ScoreDoc[] andSearchRet = booleanSearch(andQuery);
-        if(andSearchRet!=null && andSearchRet.length != 0) return andSearchRet;
+       return andSearchRet;
+    }
+
+    public ScoreDoc[] searchStringOr(StringQuery query){
+        Analyzer analyzer = indexConfig.getAnalyzer();
+        HashSet<Term> terms = analyzer.anlyze(query.getValue(), query.getField());
+        ScoreDoc[][] scoreDocs = new ScoreDoc[terms.size()][];
+        int i = 0;
+        BooleanQuery orQuery = new BooleanQuery(BooleanQuery.Operation.SHOULD);
+        for (Term term: terms) {
+            String field = term.getFieldName();
+            String termStr = term.getValue();
+            TermQuery termQuery = new TermQuery(field, termStr);
+            orQuery.addQuery(termQuery);
+        }
         ScoreDoc[] orSearchRet = booleanSearch(orQuery);
         return orSearchRet;
     }
@@ -326,14 +338,18 @@ public class Searcher {
         directoryReader.close();
     }
 
-    public ScoreDoc[] search(Query query, int topN){
+    public ScoreDoc[] search(Query query, int topN, String mode){
         ScoreDoc[] result = null;
         if(query instanceof TermQuery){
             result = searchTerm((TermQuery) query);
         } else if (query instanceof BooleanQuery) {
             result = booleanSearch((BooleanQuery) query);
         } else if (query instanceof StringQuery) {
-            result = searchString((StringQuery) query);
+            if(mode.equals("and")){
+                result = searchStringAnd((StringQuery) query);
+            }else if(mode.equals("or")){
+                result = searchStringOr((StringQuery) query);
+            }
         } else if(query instanceof NumericRangeQuery){
             result = searchNumericRange((NumericRangeQuery) query);
             return result;

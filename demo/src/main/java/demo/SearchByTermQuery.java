@@ -22,7 +22,7 @@ public class SearchByTermQuery {
         IndexConfig indexConfig = new IndexConfig(analyzer);
         Searcher searcher = new Searcher(directoryReader, indexConfig);
         Query query = new TermQuery("title", "剃须刀");
-        ScoreDoc[] hits = searcher.search(query, 10);
+        ScoreDoc[] hits = searcher.search(query, 10, "and");
         for (int i = 0; i < hits.length; i++) {
             Document doc = searcher.doc(hits[i]);
             System.out.println(JSON.toJSONString(doc));
