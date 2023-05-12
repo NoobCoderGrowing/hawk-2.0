@@ -27,7 +27,7 @@ public class WriteIndexFromFile {
         Analyzer analyzer = new NShortestPathAnalyzer(1);
         IndexConfig indexConfig = new IndexConfig(analyzer);
         IndexWriter indexWriter = new IndexWriter(indexConfig, mMapDirectory);
-        URL resource = ClassLoader.getSystemResource("goods-short.csv");
+        URL resource = ClassLoader.getSystemResource("goods.csv");
         String path = resource.getPath();
         BufferedReader bufferedReader = new BufferedReader(new FileReader(path));
         String line;

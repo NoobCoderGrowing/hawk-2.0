@@ -8,14 +8,7 @@ import util.*;
 import hawk.segment.core.Term;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -25,35 +18,39 @@ import java.util.concurrent.locks.ReentrantLock;
 @Data
 public class DocWriter implements Runnable {
 
-    private AtomicInteger docIDAllocator;
+    private volatile AtomicInteger docIDAllocator;
 
     private Document doc;
 
-    private volatile HashMap<FieldTermPair, int[][]> ivt;
+    private volatile HashMap<ByteReference, Pair<byte[], int[]>> fdm;
+
+    private volatile HashMap<FieldTermPair, List<int[]>> ivt;
     private volatile List<Pair<Integer, byte[][]>> fdt;
 
     private AtomicLong bytesUsed;
 
-    private long maxRamUsage;
+    private ReentrantLock fdmLock;
+    private ReentrantLock fdtLock;
 
-    private ReentrantLock ramUsageLock;
+    private ReentrantLock ivtLock;
+
 
     private Directory directory;
 
     private IndexConfig config;
 
-    private HashMap<ByteReference, Pair<byte[], int[]>> fdm;
 
     public DocWriter(AtomicInteger docIDAllocator, Document doc, List fdt, HashMap<FieldTermPair,
-            int[][]> ivt, AtomicLong bytesUsed, long maxRamUsage, ReentrantLock ramUsageLock, Directory directory,
+            List<int[]>> ivt, AtomicLong bytesUsed, ReentrantLock fdmLock,ReentrantLock fdtLock,ReentrantLock ivtLock, Directory directory,
                      IndexConfig config, HashMap<ByteReference, Pair<byte[], int[]>> fdm) {
         this.docIDAllocator = docIDAllocator;
         this.doc = doc;
         this.fdt = fdt;
         this.ivt = ivt;
         this.bytesUsed = bytesUsed;
-        this.maxRamUsage = maxRamUsage;
-        this.ramUsageLock = ramUsageLock;
+        this.fdmLock = fdmLock;
+        this.fdtLock = fdtLock;
+        this.ivtLock = ivtLock;
         this.directory = directory;
         this.config = config;
         this.fdm = fdm;
@@ -66,29 +63,25 @@ public class DocWriter implements Runnable {
         Pair<HashMap<ByteReference, Pair<byte[], Integer>>, byte[][]>  storedRet = processStoredFields(doc, bytesCurDoc);
         HashMap<ByteReference, Pair<byte[], Integer>> docFDM = storedRet.getLeft();
         byte[][] docFDT = storedRet.getRight();
-        HashMap<FieldTermPair, int[]> docIVT=  processIndexedFields(doc, bytesCurDoc);
-        // flush when ram usage exceeds configuration
-        ramUsageLock.lock();
-        while(bytesUsed.get() + bytesCurDoc.getValue() >= maxRamUsage * 0.95){
-            flush();
-            reset();
-        }
-        int docID = docIDAllocator.addAndGet(1);
+        HashMap<FieldTermPair, int[]> docIVT = processIndexedFields(doc, bytesCurDoc);
+        //assembling should be protected
+        int docID = docIDAllocator.getAndAdd(1);
         // assemble memory index
         assembleFDT(docFDT, docID);
         assembleFDM(docFDM);
         assembleIVT(docIVT, docID);
         bytesUsed.addAndGet(bytesCurDoc.getValue() + 8); //8bytes for 2 docID in FDM and IVT
-//        log.info("current bytes used： " + bytesUsed.get());
-        ramUsageLock.unlock();
     }
 
     public void assembleFDT(byte[][] docFDT, int docID){
+        fdtLock.lock();
         fdt.add(new Pair<>(docID, docFDT));
+        fdtLock.unlock();
     }
     // doc fdm key: filed name; value1:field type, value2: field value length
     // global fdm key: field name; value left: field type; value right1: field value length, value right2: doc count
     public void assembleFDM(HashMap<ByteReference, Pair<byte[], Integer>> docFDM){
+        fdmLock.lock();
         for (Map.Entry<ByteReference, Pair<byte[], Integer>> entry : docFDM.entrySet()){
             Pair<byte[], int[]> pair = fdm.putIfAbsent(entry.getKey(), new Pair<>(entry.getValue().getLeft(),
                     new int[]{entry.getValue().getRight(), 1}));
@@ -99,295 +92,25 @@ public class DocWriter implements Runnable {
                 pair.setRight(new int[]{filedLengthSum, docCount});
             }
         }
+        fdmLock.unlock();
     }
 
 
     //key: field term pair; value: doc frequency, field value length
-    public void  assembleIVT(HashMap<FieldTermPair, int[]> docIVT, int docID){
+    public void assembleIVT(HashMap<FieldTermPair, int[]> docIVT, int docID){
+        ivtLock.lock();
         for (Map.Entry<FieldTermPair, int[] > entry : docIVT.entrySet()) {
             FieldTermPair fieldTermPair = entry.getKey();
             //assemble ivt
             int[] IDFreqLength = new int[]{docID, entry.getValue()[0], entry.getValue()[1]};
-            int[][] value = new int[][]{IDFreqLength};
-            int[][] oldVal = ivt.putIfAbsent(fieldTermPair, value);
+            List<int[]> value = new ArrayList<>();
+            value.add(IDFreqLength);
+            List<int[]> oldVal = ivt.putIfAbsent(fieldTermPair, value);
             if(oldVal != null){ // if already a posting exists, concatenates old and new
-                oldVal = ArrayUtil.grow2DIntArray(oldVal);
-                oldVal[oldVal.length-1] = IDFreqLength;
-                ivt.put(fieldTermPair, oldVal);
+                oldVal.add(IDFreqLength);
             }
         }
-    }
-
-    public void reset(){
-        bytesUsed.set(0);
-        ivt.clear();
-        fdt.clear();
-        fdm.clear();
-    }
-
-    // write fdt into a buffer of 16kb
-    // return false if the buffer can't fit
-    public boolean insertBlock(int docID, byte[][] data, byte[] buffer, WrapInt pos){
-        int remains = buffer.length - pos.getValue(); // calculate bytes left in the buffer
-        int need = 0;
-        int notEmpty = 0;
-        for (int i = 0; i < data.length; i++) {
-            if(data[i]!=null){
-                need += data[i].length;
-                notEmpty ++;
-            }else{
-                break;
-            }
-        }
-
-        if(need + 10 <= remains){ // 10 bytes for docID and field count
-            // write docID
-            DataOutput.writeVInt(docID, buffer, pos);
-            // write field count
-            DataOutput.writeVInt(notEmpty, buffer, pos);
-            for (int i = 0; i < notEmpty; i++) {
-                //write each field
-                DataOutput.writeBytes(data[i], buffer, pos);
-            }
-            return true;
-        }
-        return false;
-    }
-
-    // write a block into .fdt file
-    public void writeCompressedBloc(byte[] buffer, byte[] compressedBuffer, int maxCompressedLength, FileChannel fdtChannel,
-                                    WrapLong fdtPos, WrapInt bufferPos){
-        //compress
-        int compressedLength = config.getCompressor().compress(buffer, 0, buffer.length, compressedBuffer,
-                0, maxCompressedLength);
-        //write to .fdt
-        ByteBuffer byteBuffer = ByteBuffer.wrap(compressedBuffer, 0, compressedLength);
-        DataOutput.writeBytes(byteBuffer, fdtChannel, fdtPos);
-        // clear buffer and buffer pos
-        Arrays.fill(buffer, (byte) 0);
-        bufferPos.setValue(0);
-        Arrays.fill(compressedBuffer, (byte) 0);
-    }
-
-    public void writeFDX(FileChannel fc, int docID, WrapLong fdtPos, WrapLong fdxPos){
-        log.info("fdx writing ===> " + "docID is " + docID + ", fdt offset is " + fdtPos.getValue());
-        DataOutput.writeVInt(docID, fc, fdxPos);
-        DataOutput.writeVLong(fdtPos, fc, fdxPos);
-    }
-
-    public void flushStored(Path fdtPath, Path fdxPath, int docBase){
-        try {
-            FileChannel fdtChannel = new RandomAccessFile(fdtPath.toAbsolutePath().toString(), "rw").getChannel();
-            FileChannel fdxChannel = new RandomAccessFile(fdxPath.toAbsolutePath().toString(), "rw").getChannel();
-            // get compression config
-            byte[] buffer = new byte[config.getBlocSize()];
-            int maxCompressedLength = config.getCompressor().maxCompressedLength(buffer.length);
-            byte[] compressedBuffer = new byte[maxCompressedLength];
-            WrapInt bufferPos = new WrapInt(0);
-            WrapLong fdtPos = new WrapLong(0);
-            WrapLong fdxPos = new WrapLong(0);
-            log.info("start writing fdx and fdt");
-            if(fdt.size()>0){
-                int blockStartID = fdt.get(0).getLeft() + docBase;
-                for (int i = 0; i < fdt.size(); i++) {
-                    int docID = fdt.get(i).getLeft() + docBase;
-                    byte[][] data = (byte[][]) fdt.get(i).getRight();
-                    if(!insertBlock(docID, data, buffer, bufferPos)){ // if buffer is full, write to disk
-                        writeFDX(fdxChannel, blockStartID, fdtPos, fdxPos);
-                        writeCompressedBloc(buffer, compressedBuffer, maxCompressedLength, fdtChannel, fdtPos,
-                                bufferPos);
-
-                        insertBlock(docID, data, buffer, bufferPos);
-                        blockStartID = docID;
-                    }
-                }
-                // last write
-                if(bufferPos.getValue() > 0){
-                    writeFDX(fdxChannel, blockStartID, fdtPos, fdxPos);
-                    writeCompressedBloc(buffer, compressedBuffer, maxCompressedLength, fdtChannel, fdtPos,
-                            bufferPos);
-                }
-            }
-
-            log.info("end of writing fdx and fdt");
-            //close channel
-            fdxChannel.force(false);
-            fdtChannel.force(false);
-            fdtChannel.close();
-            fdtChannel.close();
-        } catch (FileNotFoundException e) {
-            log.error("fdt or fdx file has not been generated");
-            System.exit(1);
-        } catch (IOException e) {
-            log.error("sth wrong when close fdx or fdx file channel");
-        }
-    }
-
-    public void writeFDM(FileChannel fc, ArrayList<Map.Entry<ByteReference, Pair<byte[], int[]>>> fdmList){
-        WrapLong pos = new WrapLong(0);
-        log.info("start writting fdm");
-        for (int i = 0; i < fdmList.size(); i++) {
-            byte[] field = fdmList.get(i).getKey().getBytes();
-            byte type = fdmList.get(i).getValue().getLeft()[0];
-            int fieldLengthSum = fdmList.get(i).getValue().getRight()[0];
-            int docCount = fdmList.get(i).getValue().getRight()[1];
-            int length = field.length;
-            log.info("field name is " + new String(field) + ", fieldLength sum is " + fieldLengthSum +
-                    ", total doc count of this field is " + docCount);
-            DataOutput.writeInt(length, fc, pos);
-            DataOutput.writeBytes(field, fc, pos);
-            DataOutput.writeByte(type, fc, pos);
-            DataOutput.writeInt(fieldLengthSum,fc,pos);
-            DataOutput.writeInt(docCount, fc, pos);
-        }
-        log.info("end of writting fdm");
-    }
-
-    public void writeTIM(FileChannel fc, FieldTermPair fieldTermPair, WrapLong timPos, WrapLong frqPos){
-        byte[] field = fieldTermPair.getField();
-        byte[] term = fieldTermPair.getTerm();
-        log.info("tim writing ==> filed name is " + new String(field) + ", term is " + new String(term) +
-                ", frq offset is " + frqPos.getValue());
-        DataOutput.writeInt(field.length, fc, timPos);
-        DataOutput.writeBytes(field, fc, timPos);
-        DataOutput.writeInt(term.length, fc, timPos);
-        DataOutput.writeBytes(term, fc, timPos);
-        DataOutput.writeVLong(frqPos, fc, timPos);
-    }
-
-    public void writeFRQ(FileChannel fc, int[][] posting, WrapLong frqPos, int docBase){
-        int length = posting.length;
-        log.info("frq writing ==> " + "posting length is " + length);
-        DataOutput.writeVInt(length, fc, frqPos);
-        for (int i = 0; i < length; i++) {
-            log.info("frq writing ==> " + "doc id is " + posting[i][0] + ", frequency is " + posting[i][1] +
-                    ", field value length is " + posting[i][2]);
-            DataOutput.writeVInt(posting[i][0] + docBase, fc, frqPos);
-            DataOutput.writeVInt(posting[i][1], fc, frqPos);
-            DataOutput.writeVInt(posting[i][2], fc, frqPos);
-        }
-    }
-
-    public void flushIndexed(Path timPath, Path frqPath, Path fdmPath, ArrayList<Map.Entry<FieldTermPair, int[][]>>
-            ivtList, ArrayList<Map.Entry<ByteReference, Pair<byte[], int[]>>> fdmList, int docBase){
-        try {
-            FileChannel timChannel = new RandomAccessFile(timPath.toAbsolutePath().toString(),
-                    "rw").getChannel();
-            FileChannel frqChannel = new RandomAccessFile(frqPath.toAbsolutePath().toString(),
-                    "rw").getChannel();
-            FileChannel fdmChannel = new RandomAccessFile(fdmPath.toAbsolutePath().toString(),
-                    "rw").getChannel();
-            // write fdm
-            writeFDM(fdmChannel, fdmList);
-            WrapLong frqPos = new WrapLong(0);
-            WrapLong timPos = new WrapLong(0);
-            log.info("start writing tim and frq");
-            for (int i = 0; i < ivtList.size(); i++) { // write .tim and .frq
-                FieldTermPair fieldTermPair = ivtList.get(i).getKey();
-                int[][] posting = ivtList.get(i).getValue();
-                writeTIM(timChannel, fieldTermPair, timPos, frqPos);
-                writeFRQ(frqChannel, posting, frqPos, docBase);
-            }
-            log.info("end of writing tim and frq");
-            timChannel.force(false);
-            frqChannel.force(false);
-            fdmChannel.force(false);
-            timChannel.close();
-            frqChannel.close();
-            fdmChannel.close();
-        } catch (FileNotFoundException e) {
-            log.error(".tim / .frq / .fdm file not found");
-            System.exit(1);
-        } catch (IOException e) {
-            log.error("force flush .tim / .frq / .fdm file errored");
-        }
-
-    }
-
-    public void sortFDM(ArrayList<Map.Entry<ByteReference, Pair<byte[], int[]>>> fdmList){
-        Collections.sort(fdmList, (a, b) -> {
-            byte[] aField = a.getKey().getBytes();
-            byte[] bField = b.getKey().getBytes();
-            for (int i = 0; i < aField.length && i < bField.length; i++) {
-                int aFieldByte = (aField[i] & 0xff);
-                int bFieldByte = (bField[i] & 0xff);
-                if(aFieldByte != bFieldByte) {
-                    return aFieldByte - bFieldByte;
-                }
-            }
-            return aField.length - bField.length;
-        });
-    }
-
-    public void sortIVTList(ArrayList<Map.Entry<FieldTermPair, int[][]>> ivtList){
-        Collections.sort(ivtList,(a, b)->{
-            FieldTermPair aP = a.getKey();
-            FieldTermPair bP = b.getKey();
-            byte[] aField = aP.getField();
-            byte[] aTerm = aP.getTerm();
-            byte[] bField = bP.getField();
-            byte[] bTerm = bP.getTerm();
-            for (int i = 0; i < aField.length && i < bField.length; i++) {
-                int aFieldByte = (aField[i] & 0xff);
-                int bFieldByte = (bField[i] & 0xff);
-                if(aFieldByte != bFieldByte) {
-                    return aFieldByte - bFieldByte;
-                }
-            }
-            if(aField.length != bField.length){
-                return aField.length - bField.length;
-            }else{
-                for (int i = 0; i < aTerm.length && i < bTerm.length; i++) {
-                    int aTermByte = (aTerm[i] & 0xff);
-                    int bTermByte = (bTerm[i] & 0xff);
-                    if(aTermByte != bTermByte) {
-                        return aTermByte - bTermByte;
-                    }
-                }
-                return aTerm.length - bTerm.length;
-            }
-        });
-    }
-
-    public void mergetest(int docBase){
-        int segCount = directory.getSegmentInfo().getSegCount();
-        if(segCount > 1) {
-            log.info("merge start now," + " cur segment count is " + segCount + ", cur file number is " +
-                    directory.getFiles().size() + ", cur maxDocID is " + directory.getSegmentInfo().getPreMaxID());
-            IndexMerger indexMerger = new IndexMerger(directory, config, docIDAllocator, docBase);
-            indexMerger.merge();
-            log.info("merge end now," + "cur segment count is " + directory.getSegmentInfo().getSegCount() +
-                    ", cur file number is " + directory.getFiles().size() + ", cur maxDocID is " +
-                    directory.getSegmentInfo().getPreMaxID());
-        }
-    }
-
-    public void flush(){
-        log.info("start flushing");
-        Path[] files = directory.generateSegFiles();
-        int docBase = directory.getSegmentInfo().getPreMaxID();
-        Path fdtPath = files[0];
-        Path fdxPath = files[1];
-        Path timPath = files[2];
-        Path frqPath = files[3];
-        Path fdmPath = files[4];
-        // sort fdm (by field lexicographically)
-        ArrayList<Map.Entry<ByteReference, Pair<byte[], int[]>>> fdmList = new ArrayList<>(fdm.entrySet());
-        sortFDM(fdmList);
-        // there is no need to sort fdt
-//        Collections.sort(fdt, (o1, o2) -> {
-//            Integer a = (Integer) o1.getLeft();
-//            Integer b = (Integer) o2.getLeft();
-//            return  a - b;
-//        });
-        // sort ivt ( sort field first and then term lexicographically)
-        ArrayList<Map.Entry<FieldTermPair, int[][]>> ivtList = new ArrayList<>(ivt.entrySet());
-        sortIVTList(ivtList);
-        //posting is already sorted
-        flushStored(fdtPath, fdxPath, docBase);
-        flushIndexed(timPath, frqPath, fdmPath, ivtList, fdmList, docBase);
-        directory.updateSegInfo(docIDAllocator.get() + docBase, 1);
-        mergetest(docBase);
+        ivtLock.unlock();
     }
 
     public Pair<HashMap<ByteReference, Pair<byte[], Integer>>, byte[][]> processStoredFields(Document doc, WrapLong bytesCurDoc) {
@@ -451,8 +174,8 @@ public class DocWriter implements Runnable {
     }
 
     public void assembleFieldTypeMap(HashMap<ByteReference, Pair<byte[], Integer>> fieldTypeMap, byte[] fieldName, byte[] type,
-                                     int fieldLegnth, WrapLong bytesCurDoc){
-        Pair ret = fieldTypeMap.putIfAbsent(new ByteReference(fieldName), new Pair<>(type, fieldLegnth));
+                                     int fieldLength, WrapLong bytesCurDoc){
+        Pair ret = fieldTypeMap.putIfAbsent(new ByteReference(fieldName), new Pair<>(type, fieldLength));
         if(ret != null){
             bytesCurDoc.setValue(bytesCurDoc.getValue() + fieldName.length + type.length + 4);
         }

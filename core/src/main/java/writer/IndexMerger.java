@@ -27,12 +27,21 @@ public class IndexMerger {
 
     private IndexConfig indexConfig;
 
-    private AtomicInteger docIDAllocator;
+//    private AtomicInteger docIDAllocator;
+
+    private volatile int docIDAllocator;
 
     int docBase;
 
 
-    public IndexMerger(Directory directory, IndexConfig indexConfig, AtomicInteger docIDAllocator, int docBase) {
+//    public IndexMerger(Directory directory, IndexConfig indexConfig, AtomicInteger docIDAllocator, int docBase) {
+//        this.directory = directory;
+//        this.indexConfig = indexConfig;
+//        this.docIDAllocator = docIDAllocator;
+//        this.docBase = docBase;
+//    }
+
+    public IndexMerger(Directory directory, IndexConfig indexConfig, int docIDAllocator, int docBase) {
         this.directory = directory;
         this.indexConfig = indexConfig;
         this.docIDAllocator = docIDAllocator;
@@ -284,7 +293,7 @@ public class IndexMerger {
             log.error("delete file errored during merge");
             System.exit(1);
         }
-        this.directory.updateSegInfo(docIDAllocator.get() + this.docBase, -1);
+        this.directory.updateSegInfo(docIDAllocator + this.docBase, -1);
     }
 
     public void mergeFDX(ArrayList<int[]> seg2FDX, FileChannel seg1FdxFC, FileChannel seg1FdtFC){
@@ -296,7 +305,7 @@ public class IndexMerger {
                 int[] item = seg2FDX.get(i);
                 int docID = item[0];
                 long fdtOffset = item[1] + seg1Fdtlimit;
-                log.info("fdx merge writing ===> " + "docID is " + docID + ", fdt offset is " + fdtOffset);
+//                log.info("fdx merge writing ===> " + "docID is " + docID + ", fdt offset is " + fdtOffset);
                 DataOutput.writeVInt(docID, seg1FdxFC, fdxOffset);
                 DataOutput.writeVLong(fdtOffset, seg1FdxFC, fdxOffset);
             }

@@ -232,8 +232,9 @@ public class NShortestPathAnalyzer implements Analyzer {
 
 //    public static void main(String[] args) throws InterruptedException {
 //        Analyzer analyzer = new NShortestPathAnalyzer(1);
-//        HashSet<Term> terms = analyzer.anlyze("适用于丰田皇冠锐志发动机机脚胶机脚支架脚垫机脚胶垫", "title");
-//        System.out.println(terms);
+//        HashSet<Term> terms = analyzer.anlyze("美的嵌入式微蒸烤一体机家用内嵌式微波炉电蒸烤箱微蒸烤三合一", "title");
+//        TreeSet<Term> sotedTerms = new TreeSet<>(terms);
+//        System.out.println(sotedTerms);
 //    }
 
 }

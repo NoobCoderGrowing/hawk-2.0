@@ -28,7 +28,7 @@ public class SearchByNumericRangeQuery {
         IndexConfig indexConfig = new IndexConfig(analyzer);
         Searcher searcher = new Searcher(directoryReader, indexConfig);
         NumericRangeQuery query = new NumericRangeQuery("price", 5.7, 18.56);
-        ScoreDoc[] hits = searcher.search(query, 10);
+        ScoreDoc[] hits = searcher.search(query, 10,"empty");
         List<Document> documents = new ArrayList<>();
         for (int i = 0; i < hits.length; i++) {
             documents.add(searcher.doc(hits[i]));

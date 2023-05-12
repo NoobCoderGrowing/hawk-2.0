@@ -1,5 +1,6 @@
 cloudIndexing add doc 和 commit之间顺序要保持严格线性         finished
 document新增id储存字段                                      finished
+新增ivt时用arraylist代替int[]                               finished
 postingList delta encoding
 用treeMap插入时排好序
 cloudIndexingFlow 容错处理
