@@ -20,6 +20,13 @@ public class DataInput {
         return value;
     }
 
+    public static int readVint(byte[] buffer){
+        int ret = 0;
+        for (int i = 0; i < buffer.length; i++) {
+            ret |= ((buffer[i] & 0x7f) << (7*i) ) ;
+        }
+        return ret;
+    }
 
     public static long readVlong(byte[] buffer){
         long ret = 0;
