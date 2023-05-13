@@ -90,10 +90,17 @@ public class Searcher {
         WrapInt frqOffsetWrapper = new WrapInt((int) frqOffset);
         int termFrequency = DataInput.readVintAtIndex(frqBuffer, frqOffsetWrapper);
         ScoreDoc[] hits = new ScoreDoc[termFrequency];
+        int base = 0;
         for (int i = 0; i < hits.length; i++) {
             int docID = DataInput.readVintAtIndex(frqBuffer, frqOffsetWrapper);
             int docFrequency = DataInput.readVintAtIndex(frqBuffer,frqOffsetWrapper);
             int docFieldLength = DataInput.readVintAtIndex(frqBuffer,frqOffsetWrapper);
+            if(i==0){
+                base = docID;
+            }else{
+                docID += base;
+                base = docID;
+            }
             float score = Similarity.BM25(directoryReader.getTotalDoc(),termFrequency, docFrequency,
                     docFieldLength, averageDocLength);
             ScoreDoc hit = new ScoreDoc(score, docID);
@@ -102,6 +109,7 @@ public class Searcher {
         return hits;
     }
 
+    // decoding delta
     public ScoreDoc[] searchNumericRange(NumericRangeQuery query){
         String field = query.getField();
         double lower = query.getLower();
@@ -120,10 +128,17 @@ public class Searcher {
                 int frqOffset = (int) DataInput.readVlong(offset);
                 WrapInt frqOffsetWrapper = new WrapInt(frqOffset);
                 int length = DataInput.readVintAtIndex(frqBuffer, frqOffsetWrapper);
+                int base = 0;
                 for (int k = 0; k < length; k++) {
                     int docID = DataInput.readVintAtIndex(frqBuffer, frqOffsetWrapper);
                     int docFrequency = DataInput.readVintAtIndex(frqBuffer,frqOffsetWrapper);
                     int docFieldLength = DataInput.readVintAtIndex(frqBuffer,frqOffsetWrapper);
+                    if(k == 0){
+                        base = docID;
+                    }else{
+                        docID += base;
+                        base = docID;
+                    }
                     float score = 0;
                     ScoreDoc hit = new ScoreDoc(score, docID);
                     resultSet.add(hit);

@@ -23,7 +23,7 @@ public class WriteIndexFromFile {
 
     public static void main(String[] args) throws IOException {
         long start = System.currentTimeMillis();
-        MMapDirectory mMapDirectory = new MMapDirectory(Paths.get("/opt/index/shard4"));
+        MMapDirectory mMapDirectory = new MMapDirectory(Paths.get("/opt/index/shard2"));
         Analyzer analyzer = new NShortestPathAnalyzer(1);
         IndexConfig indexConfig = new IndexConfig(analyzer);
         IndexWriter indexWriter = new IndexWriter(indexConfig, mMapDirectory);

@@ -33,14 +33,6 @@ public class IndexMerger {
 
     int docBase;
 
-
-//    public IndexMerger(Directory directory, IndexConfig indexConfig, AtomicInteger docIDAllocator, int docBase) {
-//        this.directory = directory;
-//        this.indexConfig = indexConfig;
-//        this.docIDAllocator = docIDAllocator;
-//        this.docBase = docBase;
-//    }
-
     public IndexMerger(Directory directory, IndexConfig indexConfig, int docIDAllocator, int docBase) {
         this.directory = directory;
         this.indexConfig = indexConfig;
@@ -68,11 +60,14 @@ public class IndexMerger {
         }
     }
 
+    //delta encoding
     public void mergeFrq(MappedByteBuffer frqBuffer1, MappedByteBuffer frqBuffer2, FileChannel seg3Frq){
         int frqLength1 = DataInput.readVint(frqBuffer1);
         int frqLength2 = DataInput.readVint(frqBuffer2);
         int frqLength = frqLength1 + frqLength2;
         DataOutput.writeVInt(frqLength,seg3Frq);
+        int base = 0;
+        int delta = 0;
         for (int i = 0; i < frqLength1; i++) {
             int docID = DataInput.readVint(frqBuffer1);
             int frequency = DataInput.readVint(frqBuffer1);
@@ -80,12 +75,18 @@ public class IndexMerger {
             DataOutput.writeVInt(docID, seg3Frq);
             DataOutput.writeVInt(frequency, seg3Frq);
             DataOutput.writeVInt(fieldLength, seg3Frq);
+            base += docID;
         }
         for (int i = 0; i < frqLength2; i++) {
             int docID = DataInput.readVint(frqBuffer2);
             int frequency = DataInput.readVint(frqBuffer2);
             int fieldLength = DataInput.readVint(frqBuffer2);
-            DataOutput.writeVInt(docID, seg3Frq);
+            if(i == 0){
+                delta = docID - base;
+            }else {
+                delta = docID;
+            }
+            DataOutput.writeVInt(delta, seg3Frq);
             DataOutput.writeVInt(frequency, seg3Frq);
             DataOutput.writeVInt(fieldLength, seg3Frq);
         }

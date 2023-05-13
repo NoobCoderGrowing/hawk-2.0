@@ -15,12 +15,12 @@ import java.nio.file.Paths;
 public class SearchByStringQuery {
 
     public static void main(String[] args) {
-        Directory directory = MMapDirectory.open(Paths.get("/opt/index/shard4"));
+        Directory directory = MMapDirectory.open(Paths.get("/opt/index/shard3"));
         DirectoryReader directoryReader = DirectoryReader.open(directory);
         Analyzer analyzer = new NShortestPathAnalyzer(1);
         IndexConfig indexConfig = new IndexConfig(analyzer);
         Searcher searcher = new Searcher(directoryReader, indexConfig);
-        Query query = new StringQuery("title", "美的");
+        Query query = new StringQuery("title", "肩膀");
         ScoreDoc[] hits = searcher.search(query, 10000, "and");
         for (int i = 0; i < hits.length; i++) {
             Document doc = searcher.doc(hits[i]);

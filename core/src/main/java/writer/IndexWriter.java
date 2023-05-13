@@ -275,14 +275,21 @@ public class IndexWriter {
         DataOutput.writeVLong(frqPos, fc, timPos);
     }
 
+    //delta encoding
     public void writeFRQ(FileChannel fc, List<int[]> posting, WrapLong frqPos, int docBase){
         int length = posting.size();
 //        log.info("frq writing ==> " + "posting length is " + length);
         DataOutput.writeVInt(length, fc, frqPos);
         for (int i = 0; i < length; i++) {
+            int delta = 0;
+            if(i == 0){
+                delta = posting.get(i)[0] + docBase;
+            }else{
+                delta = posting.get(i)[0] - posting.get(i-1)[0];
+            }
 //            log.info("frq writing ==> " + "doc id is " + posting[i][0] + ", frequency is " + posting[i][1] +
 //                    ", field value length is " + posting[i][2]);
-            DataOutput.writeVInt(posting.get(i)[0] + docBase, fc, frqPos);
+            DataOutput.writeVInt(delta, fc, frqPos);
             DataOutput.writeVInt(posting.get(i)[1], fc, frqPos);
             DataOutput.writeVInt(posting.get(i)[2], fc, frqPos);
         }

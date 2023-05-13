@@ -35,12 +35,12 @@ public class DeltaProgramingUtil {
         return result;
     }
 
-    public static void main(String[] args) {
-        int[] list = new int[]{1, 7, 9, 85 ,103, 106};
-        byte[][] delataList = DeltaProgramingUtil.generateDeltaVintList(-1, list);
-        int[] result = DeltaProgramingUtil.decodeDeltaVintList(delataList);
-        for (int i = 0; i < result.length; i++) {
-            System.out.println(result[i]);
-        }
-    }
+//    public static void main(String[] args) {
+//        int[] list = new int[]{1, 7, 9, 85 ,103, 106};
+//        byte[][] delataList = DeltaProgramingUtil.generateDeltaVintList(-1, list);
+//        int[] result = DeltaProgramingUtil.decodeDeltaVintList(delataList);
+//        for (int i = 0; i < result.length; i++) {
+//            System.out.println(result[i]);
+//        }
+//    }
 }
