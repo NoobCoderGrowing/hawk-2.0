@@ -7,8 +7,10 @@ spring:
     nacos:
       discovery:
         # 配置中心服务器地址，也就是Nacos地址,这里用nginx做LB
-        #        server-addr: 192.168.2.101:80
-        server-addr: 127.0.0.0:8801
-        ephemeral: false
+        server-addr: 127.0.0.1:80
+#        server-addr: 192.168.0.166:8802
+        ephemeral: true
+        group: shard_2
+        cluster-name: Beijing
         metadata:
-          shard: 2
+          leader: false
